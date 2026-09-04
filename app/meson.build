@@ -29,7 +29,7 @@ src = [
     'src/packet_merger.c',
     'src/receiver.c',
     'src/recorder.c',
-    'src/scrcpy.c',
+    'src/slink.c',
     'src/screen.c',
     'src/sdl_hints.c',
     'src/server.c',
