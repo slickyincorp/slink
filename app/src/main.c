@@ -10,7 +10,7 @@
 #include "cli.h"
 #include "events.h"
 #include "options.h"
-#include "scrcpy.h"
+#include "slink.h"
 #ifdef HAVE_USB
 # include "usb/scrcpy_otg.h"
 #endif
