@@ -78,3 +78,5 @@ jobs:
           fi
           git commit -m 'Complete repo-wide Slink rebrand [slink-rebrand]'
           git push
+
+# Re-trigger after repository workflow permissions were enabled.
