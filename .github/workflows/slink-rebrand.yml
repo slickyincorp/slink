@@ -1,0 +1,71 @@
+name: Slink repository rebrand
+on:
+  push:
+    branches: [rebrand/slink-phase2]
+permissions:
+  contents: write
+jobs:
+  rebrand:
+    if: "!contains(github.event.head_commit.message, '[slink-rebrand]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Rename tracked paths
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          paths = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
+          for old in sorted((p for p in paths if 'scrcpy' in p.lower()), key=len, reverse=True):
+              new = old.replace('scrcpy','slink').replace('Scrcpy','Slink').replace('SCRCPY','SLINK')
+              if old != new and os.path.exists(old):
+                  os.makedirs(os.path.dirname(new) or '.', exist_ok=True)
+                  os.rename(old, new)
+          PY
+      - name: Replace Slink branding in text files
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          protected = [
+              'https://github.com/Genymobile/scrcpy',
+              'https://github.com/Genymobile/scrcpy/',
+              'Genymobile/scrcpy',
+          ]
+          files = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
+          for path in files:
+              if not path or path == '.github/workflows/slink-rebrand.yml' or not os.path.isfile(path):
+                  continue
+              try:
+                  data = open(path, 'rb').read()
+                  text = data.decode('utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              if 'scrcpy' not in text.lower():
+                  continue
+              saved = []
+              for i, value in enumerate(protected):
+                  token = f'__SLINK_UPSTREAM_{i}__'
+                  text = text.replace(value, token)
+                  saved.append((token, value))
+              text = text.replace('com.genymobile.scrcpy', 'com.slickyincorp.slink')
+              text = text.replace('SCRCPY', 'SLINK').replace('Scrcpy', 'Slink').replace('scrcpy', 'slink')
+              for token, value in saved:
+                  text = text.replace(token, value)
+              if text.encode('utf-8') != data:
+                  open(path, 'w', encoding='utf-8', newline='').write(text)
+          PY
+      - name: Commit Slink migration
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No rebrand changes required.'
+            exit 0
+          fi
+          git commit -m 'Complete repo-wide Slink rebrand [slink-rebrand]'
+          git push
