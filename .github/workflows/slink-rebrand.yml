@@ -57,6 +57,15 @@ jobs:
               if text.encode('utf-8') != data:
                   open(path, 'w', encoding='utf-8', newline='').write(text)
           PY
+      - name: Verify no unintended legacy identity remains
+        shell: bash
+        run: |
+          set -e
+          if git grep -n -I -E 'scrcpy|Scrcpy|SCRCPY|com\.genymobile\.scrcpy' -- . ':!.github/workflows/slink-rebrand.yml' ':!LICENSE'; then
+            echo 'Legacy Slink identity remains; review the intentional upstream attribution above.'
+          else
+            echo 'Slink rebrand audit passed.'
+          fi
       - name: Commit Slink migration
         shell: bash
         run: |
