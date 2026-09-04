@@ -1,82 +1,98 @@
-name: Slink repository rebrand
+name: Slink documentation migration
 on:
   push:
     branches: [rebrand/slink-phase2]
 permissions:
   contents: write
 jobs:
-  rebrand:
-    if: "!contains(github.event.head_commit.message, '[slink-rebrand]')"
+  docs:
+    if: "!contains(github.event.head_commit.message, '[slink-docs]')"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Rename tracked paths
-        shell: bash
+      - name: Replace legacy product name in all Markdown docs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: rebrand/slink-phase2
+        shell: python
         run: |
-          python3 - <<'PY'
-          import os, subprocess
-          paths = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
-          for old in sorted((p for p in paths if 'scrcpy' in p.lower()), key=len, reverse=True):
-              new = old.replace('scrcpy','slink').replace('Scrcpy','Slink').replace('SCRCPY','SLINK')
-              if old != new and os.path.exists(old):
-                  os.makedirs(os.path.dirname(new) or '.', exist_ok=True)
-                  os.rename(old, new)
-          PY
-      - name: Replace Slink branding in text files
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import os, subprocess
-          protected = [
-              'https://github.com/Genymobile/scrcpy',
-              'https://github.com/Genymobile/scrcpy/',
-              'Genymobile/scrcpy',
-          ]
-          files = subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
-          for path in files:
-              if not path or path == '.github/workflows/slink-rebrand.yml' or not os.path.isfile(path):
-                  continue
-              try:
-                  data = open(path, 'rb').read()
-                  text = data.decode('utf-8')
-              except (UnicodeDecodeError, OSError):
-                  continue
-              if 'scrcpy' not in text.lower():
-                  continue
-              saved = []
-              for i, value in enumerate(protected):
-                  token = f'__SLINK_UPSTREAM_{i}__'
-                  text = text.replace(value, token)
-                  saved.append((token, value))
-              text = text.replace('com.genymobile.scrcpy', 'com.slickyincorp.slink')
-              text = text.replace('SCRCPY', 'SLINK').replace('Scrcpy', 'Slink').replace('scrcpy', 'slink')
-              for token, value in saved:
-                  text = text.replace(token, value)
-              if text.encode('utf-8') != data:
-                  open(path, 'w', encoding='utf-8', newline='').write(text)
-          PY
-      - name: Verify no unintended legacy identity remains
-        shell: bash
-        run: |
-          set -e
-          if git grep -n -I -E 'scrcpy|Scrcpy|SCRCPY|com\.genymobile\.scrcpy' -- . ':!.github/workflows/slink-rebrand.yml' ':!LICENSE'; then
-            echo 'Legacy Slink identity remains; review the intentional upstream attribution above.'
-          else
-            echo 'Slink rebrand audit passed.'
-          fi
-      - name: Commit Slink migration
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          if git diff --cached --quiet; then
-            echo 'No rebrand changes required.'
-            exit 0
-          fi
-          git commit -m 'Complete repo-wide Slink rebrand [slink-rebrand]'
-          git push
+          import base64
+          import json
+          import os
+          import re
+          import urllib.request
 
-# Re-trigger Slink documentation migration after repository workflow permissions were enabled.
+          token = os.environ['GH_TOKEN']
+          repo = os.environ['REPO']
+          branch = os.environ['BRANCH']
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'slink-doc-migration',
+          }
+
+          def request(url, method='GET', payload=None):
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req) as response:
+                  return json.loads(response.read().decode())
+
+          listing = request(f'https://api.github.com/repos/{repo}/contents/doc?ref={branch}')
+          docs = sorted(item['path'] for item in listing if item['type'] == 'file' and item['name'].endswith('.md'))
+
+          # Keep genuine upstream references intact; they are historical/source links,
+          # not the Slink product identity. Product commands and prose are migrated.
+          upstream_pattern = re.compile(r'https://github\\.com/Genymobile/scrcpy(?:/[^\\s)\\]>]*)?')
+          external_pattern = re.compile(r'https://github\\.com/pierlon/scrcpy-docker(?:/[^\\s)\\]>]*)?')
+
+          changed = []
+          for path in docs:
+              item = request(f'https://api.github.com/repos/{repo}/contents/{path}?ref={branch}')
+              old = base64.b64decode(item['content']).decode('utf-8')
+
+              protected = []
+              def protect(match):
+                  token_name = f'__SLINK_PROTECTED_{len(protected)}__'
+                  protected.append((token_name, match.group(0)))
+                  return token_name
+
+              text = upstream_pattern.sub(protect, old)
+              text = external_pattern.sub(protect, text)
+
+              # Build instructions should clone Slink itself, not the upstream repository.
+              text = text.replace('git clone https://github.com/Genymobile/scrcpy', 'git clone https://github.com/slickyincorp/slink')
+              text = text.replace('cd scrcpy', 'cd slink')
+
+              text = re.sub(r'(?i)scrcpy', 'slink', text)
+
+              for token_name, value in protected:
+                  text = text.replace(token_name, value)
+
+              if text != old:
+                  payload = {
+                      'message': f'docs: complete Slink rebrand in {path} [slink-docs]',
+                      'content': base64.b64encode(text.encode('utf-8')).decode('ascii'),
+                      'sha': item['sha'],
+                      'branch': branch,
+                  }
+                  request(f'https://api.github.com/repos/{repo}/contents/{path}', 'PUT', payload)
+                  changed.append(path)
+
+          print(f'Updated {len(changed)} Markdown documentation files.')
+          for path in changed:
+              print(path)
+
+          # Final documentation-only audit. Upstream source URLs are intentionally exempt.
+          remaining = []
+          for path in docs:
+              item = request(f'https://api.github.com/repos/{repo}/contents/{path}?ref={branch}')
+              text = base64.b64decode(item['content']).decode('utf-8')
+              text = upstream_pattern.sub('', text)
+              text = external_pattern.sub('', text)
+              if re.search(r'(?i)scrcpy', text):
+                  remaining.append(path)
+
+          if remaining:
+              raise SystemExit('Legacy product identity remains in: ' + ', '.join(remaining))
+          print('Slink documentation audit passed.')
