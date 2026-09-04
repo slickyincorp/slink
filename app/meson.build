@@ -63,9 +63,8 @@ src = [
     'src/util/strbuf.c',
     'src/util/str.c',
     'src/util/term.c',
-    'src/util/thread.c',
-    'src/util/tick.c',
     'src/util/timeout.c',
+    'src/util/tick.c',
 ]
 
 feature_test_macros = [
@@ -162,13 +161,13 @@ endforeach
 conf.set('HAVE_SOCK_CLOEXEC', host_machine.system() != 'windows' and
                               cc.has_header_symbol('sys/socket.h', 'SOCK_CLOEXEC'))
 
-# the version, updated on release
+# Slink client version, updated on release.
 conf.set_quoted('SCRCPY_VERSION', meson.project_version())
 
 # the prefix used during configuration (meson --prefix=PREFIX)
 conf.set_quoted('PREFIX', get_option('prefix'))
 
-# build a "portable" version (with scrcpy-server accessible from the same
+# build a "portable" version (with the Android server accessible from the same
 # directory as the executable)
 conf.set('PORTABLE', get_option('portable'))
 
@@ -190,7 +189,7 @@ configure_file(configuration: conf, output: 'config.h')
 
 src_dir = include_directories('src')
 
-executable('scrcpy', src,
+executable('slink', src,
            dependencies: dependencies,
            include_directories: src_dir,
            install: true,
