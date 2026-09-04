@@ -79,4 +79,4 @@ jobs:
           git commit -m 'Complete repo-wide Slink rebrand [slink-rebrand]'
           git push
 
-# Re-trigger after repository workflow permissions were enabled.
+# Re-trigger Slink documentation migration after repository workflow permissions were enabled.
